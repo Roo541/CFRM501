@@ -1,13 +1,39 @@
 from random import sample
+from re import X
 import pandas as pd
 import datetime as dt
 import numpy as np
 import scipy.special
-from bokeh.layouts import row, column
+from bokeh.layouts import row, column, gridplot
 from bokeh.plotting import figure, show
 from bokeh.models import DatetimeTickFormatter
 import math
 from scipy.stats import norm 
+from bokeh.models import LinearAxis, Range1d
+
+def gaussian(x_min, x_max, mu, sigma2):
+    x_array = np.arange(x_min, x_max + 0.001, 0.001)
+    y_array = []
+    for i in x_array:
+        value = 1/(np.sqrt(2*np.pi*sigma2))*np.exp(-1/2*(i-mu)**2/sigma2)
+        y_array.append(value)
+
+    return x_array, y_array
+
+def laplace(x_min, x_max, a, mu, sigma):
+    x_array_l = np.arange(x_min, x_max + 0.001, 0.001)
+    y_array_l = []
+    gamma = np.sqrt(2*sigma**2 + mu**2)
+
+    for i in x_array_l:
+        if i >= a:
+            value = (1/gamma)*(np.exp(((i-a)/sigma**2)*(mu-gamma)))
+            y_array_l.append(value)
+        if i < a:
+            value = (1/gamma)*(np.exp(((i-a)/sigma**2)*(mu+gamma)))
+            y_array_l.append(value)
+    return x_array_l, y_array_l
+
 
 def histogram_arithmetic(start, end, symbol, bins):
     
@@ -67,7 +93,7 @@ def histogram_arithmetic(start, end, symbol, bins):
     print(df_hist['pdf_y'].sum())
     return
 
-def histogram_log_return(start, end, symbol, bins, mu, sigma):
+def histogram_pdf_normal_laplace(start, end, symbol, bins, mu, sigma2):
     
     #establish min and max pct returns, 
     min = math.floor((df['log_returns'].min())*100)/100
@@ -104,26 +130,43 @@ def histogram_log_return(start, end, symbol, bins, mu, sigma):
     p = figure(plot_height = 800, plot_width = 1000, 
             title = '{} Daily Log Returns'.format(symbol),
             x_axis_label = 'Daily Log Returns', 
-            y_axis_label = 'Frequency')
+            y_axis_label = 'Frequency', y_range = (0,df_hist['frequency'].max()+5))
 
     # Add a quad glyph
     p.quad(bottom=0, top=df_hist['frequency'], 
         left=df_hist['left'], right=df_hist['right'], 
-        fill_color='orange', line_color='black')
+        fill_color='yellow', line_color='black')
 
     pdf_title = symbol + ' PDF' + ' N(' + str(mu) + ',' + str(sigma2) + ')'
     p2 = figure(plot_height = 800, plot_width = 1000, 
             title = pdf_title,
-            x_axis_label = 'Daily Log Return Value', 
+            x_axis_label = 'Daily Log Return', 
             y_axis_label = 'Probability Density')
 
-    #define x-return min and max and increment
-    p2.line(df_hist['pdf_x'], norm.pdf(df_hist['pdf_x'], mu, sigma), line_width=2)
+    #calculated by hand
+    a_hat = -0.00255304
+    mu_hat = 0.002177315
+    sigma_hat = 0.0217198
 
+    #figure with new mu_hat
+    pdf_title = symbol + ' Laplace PDF' + ' mu_hat = ' + str(mu) + ', a_hat = ' + str(a_hat) + ', (sigma_hat)^2 = ' + str(sigma_hat) + ')'
+    p3 = figure(plot_height = 800, plot_width = 1000, 
+            title = pdf_title,
+            x_axis_label = 'Daily Log Return', 
+            y_axis_label = 'Probability Density')
+    #add new axis
+    x_array, y_array = gaussian(min, max, mu, sigma2)
+    x_array_l, y_array_l = laplace(min, max, a_hat, mu_hat, sigma_hat)
+    p.extra_y_ranges = {"PDF": Range1d(start=0, end=32)}
+    p.line(x_array, y_array, color="blue", y_range_name="PDF", line_width = 3)
+    p.line(x_array_l, y_array_l, color="red", y_range_name="PDF", line_width = 3)
+    p.add_layout(LinearAxis(y_range_name="PDF"), 'right')
+
+    p2.line(x_array, y_array, color = 'blue', line_width=2)
+    p3.line(x_array_l, y_array_l, color = 'red', line_width=2)
     # Show the plot
-    show(row(p, p2))
+    show(gridplot([[p, p2], [p3, None]]))
     print(df_hist)
-    print(df_hist['pdf_y'].sum())
     return
 
 def time_series(symbol):
@@ -145,8 +188,9 @@ def time_series(symbol):
     )
 
     p.xaxis.major_label_orientation = np.pi/4
-    #show(p)
+    show(p)
     return
+
 
 def sample_mean():
     summation = 0.00
@@ -187,6 +231,7 @@ df['log_returns'] = [np.nan]*len(df)
 for i in range(1,len(df)):
     df['log_returns'][i] = np.log(df['adj close'][i]/df['adj close'][i-1])
 
+print('***',len(df))
 start = ''
 end = ''
 symbol = 'DIS'
@@ -198,5 +243,8 @@ mu = sample_mean()
 sigma2 = sample_var(mu)
 skewness = sample_skewness(mu, sigma2)
 kurtosis = sample_kurtosis(mu, sigma2)
-print('sample_mean:',mu, ' sample_variance:', sigma2, ' sample_skewness:', skewness, ' sample_kurtosis:', kurtosis)
-histogram_log_return(start, end, symbol, bins, mu, sigma2)
+print(' sample_mean:',mu) 
+print(' sample_variance:', sigma2) 
+print(' sample_skewness:', skewness) 
+print(' sample_kurtosis:', kurtosis)
+histogram_pdf_normal_laplace(start, end, symbol, bins, mu, sigma2)
